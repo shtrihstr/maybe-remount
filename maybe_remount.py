@@ -50,9 +50,8 @@ class Mount:
 
     def _remount(self):
         escaped_dir = "'" + self._directory.replace("'", "'\\''") + "'"
-        cmd = "/bin/umount -l %s && /bin/mount %s " % (escaped_dir, escaped_dir)
-        #os.system(cmd)
-        print cmd
+        cmd = "/bin/umount -l %s && /bin/mount %s" % (escaped_dir, escaped_dir)
+        os.system(cmd)
 
     def maybe_remount(self):
         if not self.is_ok():
