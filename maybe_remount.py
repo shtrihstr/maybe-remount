@@ -1,66 +1,50 @@
 import os
 import re
+import subprocess
 import sys
+import logging
 
 class Mount:
-    TEST_FILE = ".mount_test";
-
     _directory = None
 
     def __init__(self, directory):
-        d = re.sub("/$", "", directory)
-        if not os.path.isdir(d):
+        self._directory = re.sub("/$", "", directory)
+        if not os.path.isdir(self._directory):
             raise ValueError("Invalid directory")
-        self._directory = re.sub("/$", "", d)
 
+        if self._directory not in open("/etc/fstab", "r").read():
+            raise ValueError("Invalid mount endpoint")
 
     def _is_mounted(self):
         return os.path.ismount(self._directory)
 
-    def _try_write(self):
-        try:
-            with open(self._get_test_file(), "w") as outfile:
-                outfile.write("mount")
-        except IOError:
-            return False
-        return True
-
-    def _try_read(self):
-        content = ""
-        try:
-            with open(self._get_test_file(), "rb") as outfile:
-                content = outfile.read()
-        except IOError:
-            return False
-        return content == "mount"
-
-    def _try_remove(self):
-        try:
-            os.remove(self._get_test_file())
-        except OSError:
-            return False
-        return True
-
-    def _get_test_file(self):
-        return self._directory + "/" + self.TEST_FILE;
+    def _is_alive(self):
+        escaped_dir = "'" + self._directory.replace("'", "'\\''") + "'"
+        cmd = "/usr/bin/timeout 5 ls %s || echo 'timeout'" % escaped_dir;
+        p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE);
+        output = p.communicate()[0];
+        return output != "timeout\n"
 
     def is_ok(self):
-        self._try_remove()
-        return self._is_mounted() and self._try_write() and self._try_read() and self._try_remove()
+        return self._is_mounted() and self._is_alive()
 
     def _remount(self):
         escaped_dir = "'" + self._directory.replace("'", "'\\''") + "'"
-        cmd = "/bin/umount -l %s && /bin/mount %s" % (escaped_dir, escaped_dir)
-        os.system(cmd)
+        os.system("/bin/umount -l %s" % escaped_dir)
+        os.system("/bin/mount -l %s" % escaped_dir)
+        logging.info("Remount %s" % self._directory)
 
     def maybe_remount(self):
         if not self.is_ok():
             self._remount();
 
-
 if __name__ == '__main__':
+
+    logging.basicConfig(filename="/var/log/maybe_remount.log", level=logging.INFO, format='%(asctime)s %(message)s')
+
     if len(sys.argv) < 2:
         raise ValueError("Invalid directory")
+
     directory = sys.argv[1]
 
     mount = Mount(directory)
